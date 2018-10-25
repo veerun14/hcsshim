@@ -3,6 +3,7 @@ package npipeio
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -144,8 +145,8 @@ func TestNamedPipeDelayedConnectionCloseUnblocksWrite(t *testing.T) {
 	}
 
 	d := <-writeDone
-	if d.err != winio.ErrFileClosed {
-		t.Fatalf("write response expected error: %v, got error: %v", winio.ErrFileClosed, d.err)
+	if d.err != io.EOF {
+		t.Fatalf("write response expected error: %v, got error: %v", io.EOF, d.err)
 	}
 	if d.n != 0 {
 		t.Fatalf("write response failed with invalid length, expected: 0, actual %d", d.n)
@@ -213,8 +214,8 @@ func TestNamedPipeDelayedConnectionCloseUnblocksRead(t *testing.T) {
 	}
 
 	d := <-readDone
-	if d.err != winio.ErrFileClosed {
-		t.Fatalf("read response expected error: %v, got error: %v", winio.ErrFileClosed, d.err)
+	if d.err != io.EOF {
+		t.Fatalf("read response expected error: %v, got error: %v", io.EOF, d.err)
 	}
 	if d.n != 0 {
 		t.Fatalf("read response failed with invalid length, expected: 0, actual %d", d.n)

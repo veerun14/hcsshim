@@ -64,8 +64,9 @@ func NewNamedPipeDelayedConnection(ctx context.Context, pipeListener net.Listene
 }
 
 // Read reads up to len(p) bytes into p. If no connection is available blocks
-// until a connection arrives, the connection is aborted, or the connection is
-// closed.
+// until a connection arrives.
+//
+// A call to `Close` will unblock the `Read` and return `io.EOF`
 func (npdc *NamedPipeDelayedConnection) Read(p []byte) (int, error) {
 	npdc.c.L.Lock()
 	for npdc.state == connectionStateDisconnected {
@@ -75,7 +76,7 @@ func (npdc *NamedPipeDelayedConnection) Read(p []byte) (int, error) {
 	if npdc.state == connectionStateAborted ||
 		npdc.state == connectionStateClosed {
 		npdc.c.L.Unlock()
-		return 0, winio.ErrFileClosed
+		return 0, io.EOF
 	}
 
 	n, err := npdc.conn.Read(p)
@@ -90,8 +91,9 @@ func (npdc *NamedPipeDelayedConnection) Read(p []byte) (int, error) {
 }
 
 // Write writes len(p) bytes from p to the underlying data stream. If no
-// connection is available blocks until a connection arrives, the connection is
-// aborted, or the connection is closed.
+// connection is available blocks until a connection arrives.
+//
+// A call to `Close` will unblock the `Write` and return `io.EOF`
 func (npdc *NamedPipeDelayedConnection) Write(p []byte) (int, error) {
 	npdc.c.L.Lock()
 	for npdc.state == connectionStateDisconnected {
@@ -101,7 +103,7 @@ func (npdc *NamedPipeDelayedConnection) Write(p []byte) (int, error) {
 	if npdc.state == connectionStateAborted ||
 		npdc.state == connectionStateClosed {
 		npdc.c.L.Unlock()
-		return 0, winio.ErrFileClosed
+		return 0, io.EOF
 	}
 
 	n, err := npdc.conn.Write(p)

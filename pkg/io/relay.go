@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 
-	winio "github.com/Microsoft/go-winio"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
@@ -56,9 +55,7 @@ func NewIORelay(ctx context.Context, upstream UpstreamIO, downstream DownstreamI
 	if upstream.Stdin() != nil {
 		ir.g.Go(func() error {
 			if _, err := io.Copy(downstream.Stdin(), upstream.Stdin()); err != nil {
-				if err != winio.ErrFileClosed {
-					return errors.Wrap(err, "error relaying stdin")
-				}
+				return errors.Wrap(err, "error relaying stdin")
 			}
 			return nil
 		})
