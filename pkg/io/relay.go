@@ -37,7 +37,8 @@ type IORelay struct {
 	u UpstreamIO
 	d DownstreamIO
 
-	g *errgroup.Group
+	g   *errgroup.Group
+	gin *errgroup.Group
 }
 
 // NewIORelay creates an `IORelay` and begins relaying data from `upstream` to
@@ -51,13 +52,17 @@ func NewIORelay(ctx context.Context, upstream UpstreamIO, downstream DownstreamI
 		d: downstream,
 	}
 	ir.g, ir.ctx = errgroup.WithContext(ctx)
+	ir.gin, _ = errgroup.WithContext(ir.ctx)
 
 	if upstream.Stdin() != nil {
 		ir.g.Go(func() error {
-			if _, err := io.Copy(downstream.Stdin(), upstream.Stdin()); err != nil {
-				return errors.Wrap(err, "error relaying stdin")
-			}
-			return nil
+			ir.gin.Go(func() error {
+				if _, err := io.Copy(downstream.Stdin(), upstream.Stdin()); err != nil {
+					return errors.Wrap(err, "error relaying stdin")
+				}
+				return nil
+			})
+			return ir.gin.Wait()
 		})
 	}
 	if upstream.Stdout() != nil {
@@ -83,4 +88,13 @@ func NewIORelay(ctx context.Context, upstream UpstreamIO, downstream DownstreamI
 // associated with the relay operation.
 func (ir *IORelay) Wait() error {
 	return ir.g.Wait()
+}
+
+// WaitStdin waits for the relay from `UpstreamIO.Stdin()` to
+// `DownstreamIO.Stdin()` to complete.
+func (ir *IORelay) WaitStdin() error {
+	if ir.u.Stdin() == nil {
+		return nil
+	}
+	return ir.gin.Wait()
 }

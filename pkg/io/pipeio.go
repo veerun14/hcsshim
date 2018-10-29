@@ -82,7 +82,6 @@ func (npdc *NamedPipeDelayedConnection) Read(p []byte) (int, error) {
 	n, err := npdc.conn.Read(p)
 	if err == io.EOF {
 		npdc.state = connectionStateDisconnected
-		go npdc.reconnect()
 		npdc.c.L.Unlock()
 		return npdc.Read(p[n:])
 	}
@@ -109,7 +108,6 @@ func (npdc *NamedPipeDelayedConnection) Write(p []byte) (int, error) {
 	n, err := npdc.conn.Write(p)
 	if err == errorNoData {
 		npdc.state = connectionStateDisconnected
-		go npdc.reconnect()
 		npdc.c.L.Unlock()
 		return npdc.Write(p[n:])
 	}
@@ -153,22 +151,38 @@ func (npdc *NamedPipeDelayedConnection) Close() error {
 }
 
 func (npdc *NamedPipeDelayedConnection) reconnect() {
-	npdc.c.L.Lock()
-	c, err := npdc.l.Accept()
-	if err != nil {
-		if err == winio.ErrPipeListenerClosed {
-			// The listener has been closed. We will never make a connection again.
-			npdc.state = connectionStateAborted
-		} else {
-			// Unexpected error. Close
-			npdc.cerr = err
+	for {
+		npdc.c.L.Lock()
+		if npdc.state == connectionStateAborted ||
+			npdc.state == connectionStateClosed {
+			npdc.c.L.Unlock()
+			break
 		}
 		npdc.c.L.Unlock()
-		npdc.Close()
-		return
+
+		// We dont hold the lock while we wait re-connections
+		c, err := npdc.l.Accept()
+
+		npdc.c.L.Lock()
+		if err != nil {
+			if err == winio.ErrPipeListenerClosed {
+				// The listener has been closed. We will never make a connection again.
+				npdc.state = connectionStateAborted
+			} else {
+				// Unexpected error. Close
+				npdc.cerr = err
+			}
+			npdc.c.L.Unlock()
+			npdc.Close()
+			return
+		}
+		if npdc.conn != nil {
+			// Forcibly close any previous connection
+			npdc.conn.Close()
+		}
+		npdc.state = connectionStateConnected
+		npdc.conn = c
+		npdc.c.Signal()
+		npdc.c.L.Unlock()
 	}
-	npdc.state = connectionStateConnected
-	npdc.conn = c
-	npdc.c.Signal()
-	npdc.c.L.Unlock()
 }

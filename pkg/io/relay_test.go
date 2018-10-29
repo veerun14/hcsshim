@@ -9,50 +9,28 @@ import (
 	"time"
 )
 
-var _ = (io.ReadWriteCloser)(&bufCloser{})
+var _ = (io.ReadWriter)(&blockReadWriter{})
 
-type bufCloser struct {
-	b bytes.Buffer
-}
-
-func (bc *bufCloser) Read(p []byte) (int, error) {
-	return bc.b.Read(p)
-}
-
-func (bc *bufCloser) Write(p []byte) (int, error) {
-	return bc.b.Write(p)
-}
-
-func (bc *bufCloser) Close() error {
-	return nil
-}
-
-var _ = (io.ReadWriteCloser)(&blockCloser{})
-
-type blockCloser struct {
+type blockReadWriter struct {
 	wg sync.WaitGroup
 
 	b bytes.Buffer
 }
 
-func newBlockCloser() *blockCloser {
-	bc := &blockCloser{}
-	bc.wg.Add(1)
-	return bc
+func newBlockReadWriter() *blockReadWriter {
+	brw := &blockReadWriter{}
+	brw.wg.Add(1)
+	return brw
 }
 
-func (bc *blockCloser) Read(p []byte) (int, error) {
-	bc.wg.Wait()
-	return bc.b.Read(p)
+func (brw *blockReadWriter) Read(p []byte) (int, error) {
+	brw.wg.Wait()
+	return brw.b.Read(p)
 }
 
-func (bc *blockCloser) Write(p []byte) (int, error) {
-	bc.wg.Wait()
-	return bc.b.Write(p)
-}
-
-func (bc *blockCloser) Close() error {
-	return nil
+func (brw *blockReadWriter) Write(p []byte) (int, error) {
+	brw.wg.Wait()
+	return brw.b.Write(p)
 }
 
 var _ = (UpstreamIO)(&testUpIO{})
@@ -138,13 +116,13 @@ func TestIORelaySuccess(t *testing.T) {
 }
 
 func TestIORelayWaitBeforeComplete(t *testing.T) {
-	inUp, outUp, errUp := newBlockCloser(), new(bytes.Buffer), new(bytes.Buffer)
+	inUp, outUp, errUp := newBlockReadWriter(), new(bytes.Buffer), new(bytes.Buffer)
 	up := &testUpIO{
 		stdin:  inUp,
 		stdout: outUp,
 		stderr: errUp,
 	}
-	inDown, outDown, errDown := new(bytes.Buffer), newBlockCloser(), newBlockCloser()
+	inDown, outDown, errDown := new(bytes.Buffer), newBlockReadWriter(), newBlockReadWriter()
 	down := &testDownIO{
 		stdin:  inDown,
 		stdout: outDown,
