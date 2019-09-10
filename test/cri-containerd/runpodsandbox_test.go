@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 )
@@ -21,6 +22,11 @@ func runPodSandboxTest(t *testing.T, request *runtime.RunPodSandboxRequest) {
 	podID := runPodSandbox(t, client, ctx, request)
 	stopPodSandbox(t, client, ctx, podID)
 	removePodSandbox(t, client, ctx, podID)
+}
+
+func stopAndRemovePodSandbox(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, podID string) {
+	defer removePodSandbox(t, client, ctx, podID)
+	stopPodSandbox(t, client, ctx, podID)
 }
 
 func Test_RunPodSandbox_WCOW_Process(t *testing.T) {
@@ -69,6 +75,63 @@ func Test_RunPodSandbox_LCOW(t *testing.T) {
 		RuntimeHandler: lcowRuntimeHandler,
 	}
 	runPodSandboxTest(t, request)
+}
+
+func Test_RunPodSandbox_Events_LCOW(t *testing.T) {
+	client := newTestRuntimeClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	podctx, podcancel := context.WithCancel(context.Background())
+	defer podcancel()
+
+	pullRequiredLcowImages(t, []string{imageLcowK8sPause})
+
+	request := &runtime.RunPodSandboxRequest{
+		Config: &runtime.PodSandboxConfig{
+			Metadata: &runtime.PodSandboxMetadata{
+				Name:      t.Name(),
+				Uid:       "0",
+				Namespace: testNamespace,
+			},
+		},
+		RuntimeHandler: lcowRuntimeHandler,
+	}
+
+	topicNames, filters := getTargetRunTopics()
+	targetNamespace := "k8s.io"
+
+	eventService := newTestEventService(t)
+	stream, errs := eventService.Subscribe(ctx, filters...)
+
+	podID := runPodSandbox(t, client, podctx, request)
+	stopAndRemovePodSandbox(t, client, podctx, podID)
+
+	for _, topic := range topicNames {
+		select {
+		case env := <-stream:
+			if topic != env.Topic {
+				t.Fatalf("event topic %v does not match expected topic %v", env.Topic, topic)
+			}
+			if targetNamespace != env.Namespace {
+				t.Fatalf("event namespace %v does not match expected namespace %v", env.Namespace, targetNamespace)
+			}
+			t.Logf("event topic seen: %v", env.Topic)
+
+			id, _, err := convertEvent(env.Event)
+			if err != nil {
+				t.Fatalf("topic %v event: %v", env.Topic, err)
+			}
+			if id != podID {
+				t.Fatalf("event topic %v belongs to pod %v, not targeted pod %v", env.Topic, id, podID)
+			}
+		case err := <-errs:
+			t.Fatalf("event subscription err %v", err)
+		case <-ctx.Done():
+			if ctx.Err() == context.DeadlineExceeded {
+				t.Fatalf("event %v deadline exceeded", topic)
+			}
+		}
+	}
 }
 
 func Test_RunPodSandbox_VirtualMemory_WCOW_Hypervisor(t *testing.T) {
