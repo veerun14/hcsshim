@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/containerd/containerd/events"
+	"github.com/pkg/errors"
 	runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 )
 
@@ -79,7 +82,7 @@ func Test_RunPodSandbox_LCOW(t *testing.T) {
 
 func Test_RunPodSandbox_Events_LCOW(t *testing.T) {
 	client := newTestRuntimeClient(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	podctx, podcancel := context.WithCancel(context.Background())
 	defer podcancel()
@@ -103,33 +106,56 @@ func Test_RunPodSandbox_Events_LCOW(t *testing.T) {
 	eventService := newTestEventService(t)
 	stream, errs := eventService.Subscribe(ctx, filters...)
 
+	bufferedEvents := make([]*events.Envelope, len(topicNames))
+	var eventErrs []error
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		for i := 0; i < len(bufferedEvents); i++ {
+			select {
+			case env := <-stream:
+				bufferedEvents[i] = env
+			case e := <-errs:
+				eventErrs = append(eventErrs, errors.Errorf("event subscription err %v", e))
+			case <-ctx.Done():
+				eventErrs = append(eventErrs, errors.New("context deadline exceeded"))
+			}
+		}
+		wg.Done()
+	}()
+
 	podID := runPodSandbox(t, client, podctx, request)
 	stopAndRemovePodSandbox(t, client, podctx, podID)
 
-	for _, topic := range topicNames {
-		select {
-		case env := <-stream:
-			if topic != env.Topic {
-				t.Fatalf("event topic %v does not match expected topic %v", env.Topic, topic)
-			}
-			if targetNamespace != env.Namespace {
-				t.Fatalf("event namespace %v does not match expected namespace %v", env.Namespace, targetNamespace)
-			}
-			t.Logf("event topic seen: %v", env.Topic)
+	wg.Wait()
 
-			id, _, err := convertEvent(env.Event)
-			if err != nil {
-				t.Fatalf("topic %v event: %v", env.Topic, err)
-			}
-			if id != podID {
-				t.Fatalf("event topic %v belongs to pod %v, not targeted pod %v", env.Topic, id, podID)
-			}
-		case err := <-errs:
-			t.Fatalf("event subscription err %v", err)
-		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("event %v deadline exceeded", topic)
-			}
+	if len(eventErrs) != 0 {
+		for _, e := range eventErrs {
+			t.Log(e)
+		}
+		t.Fatal("Reading events from subscription stream failed")
+	}
+
+	for i, topic := range topicNames {
+		env := bufferedEvents[i]
+		if env == nil {
+			t.Fatalf("Event %v not seen", topic)
+		}
+		if topic != env.Topic {
+			t.Fatalf("event topic %v does not match expected topic %v", env.Topic, topic)
+		}
+		if targetNamespace != env.Namespace {
+			t.Fatalf("event namespace %v does not match expected namespace %v", env.Namespace, targetNamespace)
+		}
+		t.Logf("event topic seen: %v", env.Topic)
+		id, _, err := convertEvent(env.Event)
+		if err != nil {
+			t.Fatalf("topic %v event: %v", env.Topic, err)
+		}
+		if id != podID {
+			t.Fatalf("event topic %v belongs to pod %v, not targeted pod %v", env.Topic, id, podID)
 		}
 	}
 }

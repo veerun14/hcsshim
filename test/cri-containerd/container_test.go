@@ -11,9 +11,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/containerd/containerd/events"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 )
@@ -55,10 +58,12 @@ func runLogRotationContainer(t *testing.T, sandboxRequest *runtime.RunPodSandbox
 	time.Sleep(3 * time.Second)
 }
 
-func runContainerLifetime(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, containerID string) {
+func runContainerLifetime(t *testing.T, client runtime.RuntimeServiceClient, ctx context.Context, request *runtime.CreateContainerRequest) string {
+	containerID := createContainer(t, client, ctx, request)
 	defer removeContainer(t, client, ctx, containerID)
 	startContainer(t, client, ctx, containerID)
-	stopContainer(t, client, ctx, containerID)
+	defer stopContainer(t, client, ctx, containerID)
+	return containerID
 }
 
 func Test_RotateLogs_LCOW(t *testing.T) {
@@ -185,33 +190,56 @@ func Test_RunContainer_Events_LCOW(t *testing.T) {
 	eventService := newTestEventService(t)
 	stream, errs := eventService.Subscribe(ctx, filters...)
 
-	containerID := createContainer(t, client, podctx, request)
-	runContainerLifetime(t, client, podctx, containerID)
+	bufferedEvents := make([]*events.Envelope, len(topicNames))
+	var eventErrs []error
 
-	for _, topic := range topicNames {
-		select {
-		case env := <-stream:
-			if topic != env.Topic {
-				t.Fatalf("event topic %v does not match expected topic %v", env.Topic, topic)
-			}
-			if targetNamespace != env.Namespace {
-				t.Fatalf("event namespace %v does not match expected namespace %v", env.Namespace, targetNamespace)
-			}
-			t.Logf("event topic seen: %v", env.Topic)
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-			id, _, err := convertEvent(env.Event)
-			if err != nil {
-				t.Fatalf("topic %v event: %v", env.Topic, err)
+	// buffer events here so we can check the ID later
+	go func() {
+		for i := 0; i < len(bufferedEvents); i++ {
+			select {
+			case env := <-stream:
+				bufferedEvents[i] = env
+			case e := <-errs:
+				eventErrs = append(eventErrs, errors.Errorf("event subscription err %v", e))
+			case <-ctx.Done():
+				eventErrs = append(eventErrs, errors.New("context deadline exceeded"))
 			}
-			if id != containerID {
-				t.Fatalf("event topic %v belongs to container %v, not targeted container %v", env.Topic, id, containerID)
-			}
-		case e := <-errs:
-			t.Fatalf("event subscription err %v", e)
-		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
-				t.Fatalf("event %v deadline exceeded", topic)
-			}
+		}
+		wg.Done()
+	}()
+
+	containerID := runContainerLifetime(t, client, podctx, request)
+	wg.Wait()
+
+	if len(eventErrs) != 0 {
+		// experienced errors during event reading
+		for _, e := range eventErrs {
+			t.Log(e)
+		}
+		t.Fatal("Reading events from subscription stream failed")
+	}
+
+	for i, topic := range topicNames {
+		env := bufferedEvents[i]
+		if env == nil {
+			t.Fatalf("Event %v not seen", topic)
+		}
+		if topic != env.Topic {
+			t.Fatalf("event topic %v does not match expected topic %v", env.Topic, topic)
+		}
+		if targetNamespace != env.Namespace {
+			t.Fatalf("event namespace %v does not match expected namespace %v", env.Namespace, targetNamespace)
+		}
+		t.Logf("event topic seen: %v", env.Topic)
+		id, _, err := convertEvent(env.Event)
+		if err != nil {
+			t.Fatalf("topic %v event: %v", env.Topic, err)
+		}
+		if id != containerID {
+			t.Fatalf("event topic %v belongs to container %v, not targeted container %v", env.Topic, id, containerID)
 		}
 	}
 }
