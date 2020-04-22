@@ -11,11 +11,21 @@ defaults:
     shell: powershell
 
 jobs:
-
+ 
   build:
     name: HCSShim tests
     runs-on: windows-latest
     steps:
+    
+    - name: setup-docker
+      uses: docker-practice/actions-setup-docker@0.0.1
+      
+    - name: Pull docker images
+      run: |
+        docker pull mcr.microsoft.com/windows/nanoserver:1809
+        docker pull mcr.microsoft.com/windows/nanoserver:sac2016
+        docker pull mcr.microsoft.com/windows/nanoserver/insider:10.0.17763.55
+        docker pull --platform=linux alpine
     
     - name: Set up Go 1.13
       uses: actions/setup-go@v1
@@ -27,19 +37,14 @@ jobs:
       uses: actions/checkout@v2
       
     - name: Build runhcs.exe
-      run: go install -a -v ./cmd/runhcs
+      run: go build -a -v -o ./test/runhcs.exe ./cmd/runhcs
     
     - name: Build containerd-shim-runhcs-v1.exe
-      run: go install -a -v ./cmd/containerd-shim-runhcs-v1
+      run: go build -a -v -o ./test/containerd-shim-runhcs-v1.exe ./cmd/containerd-shim-runhcs-v1
       
     - name: Test
       run: |
         cd test
-        echo $Env:Path
-        echo $Env:GOPATH
-        $Env:Path += ";$ENV:GOPATH\bin"
-        echo $Env:Path
-        dir $Env:GOPATH\bin
-        go test -a -v -tags functional ./runhcs ./internal
+        go test -a -v -tags "functional uvmcreate uvmscratch uvmscsi uvmvpmem uvmvsmb uvmp9" ./runhcs ./internal
 
     
