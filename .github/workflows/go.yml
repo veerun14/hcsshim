@@ -22,6 +22,7 @@ jobs:
       
     - name: Pull docker images
       run: |
+        docker pull mcr.microsoft.com/windows/nanoserver:1709
         docker pull mcr.microsoft.com/windows/nanoserver:1809
         docker pull mcr.microsoft.com/windows/nanoserver:sac2016
         docker pull mcr.microsoft.com/windows/nanoserver/insider:10.0.17763.55
@@ -44,6 +45,10 @@ jobs:
     - name: Test
       run: |
         cd test
+        dir
+        echo $Env:Path
+        $cwd = (Get-Location).Path
+        $Env:Path += ";$cwd"
         go test -a -v -tags "functional uvmcreate uvmscratch uvmscsi uvmvpmem uvmvsmb uvmp9" ./runhcs ./internal
 
     
