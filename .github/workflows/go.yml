@@ -5,6 +5,10 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+    
+defaults:
+  run:
+    shell: powershell
 
 jobs:
 
@@ -12,25 +16,13 @@ jobs:
     name: HCSShim tests
     runs-on: windows-latest
     steps:
+      - name: Test
+        run: |
+          cd test
+          echo $Env:Path
+          echo $Env:GOPATH
+          $Env:Path += ";$ENV:GOPATH\bin"
+          echo $Env:Path
+          dir $Env:GOPATH\bin
 
-    - name: Set up Go 1.13
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.13
-      id: go
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-      
-    - name: Build runhcs.exe
-      run: go install -a -v ./cmd/runhcs
     
-    - name: Build containerd-shim-runhcs-v1.exe
-      run: go install -a -v ./cmd/containerd-shim-runhcs-v1
-
-    - name: Test
-      run: |
-        cd test
-        $Env:Path += ";$ENV:GOPATH\bin"
-        dir $ENV:GOPATH\bin
-        go test -a -v -tags functional ./runhcs ./internal
