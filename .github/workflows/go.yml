@@ -25,7 +25,6 @@ jobs:
         docker pull mcr.microsoft.com/windows/nanoserver:1809
         docker pull mcr.microsoft.com/windows/nanoserver:sac2016
         docker pull mcr.microsoft.com/windows/nanoserver/insider:10.0.17763.55
-        docker pull --platform=linux alpine
     
     - name: Set up Go 1.13
       uses: actions/setup-go@v1
