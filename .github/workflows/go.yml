@@ -25,4 +25,4 @@ jobs:
     - name: Test
       run: |
         cd test
-        go test -a -v -tags functional ./test/runhcs
+        go test -a -v -tags functional ./runhcs ./internal
