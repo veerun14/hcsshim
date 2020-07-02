@@ -10,17 +10,9 @@ steps:
     version: '1.13.5'
 - task: Go@0
   inputs:
-    command: 'get'
-    arguments: '-d'
-    workingDirectory: '$(System.DefaultWorkingDirectory)'
-- task: Go@0
-  inputs:
     command: 'build'
-    arguments: '-a -v github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1'
+    arguments: '-a -v github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1 github.com/Microsoft/hcsshim/cmd/runhcs'
     workingDirectory: '$(System.DefaultWorkingDirectory)'
-- task: CopyFiles@2
-  inputs:
-    TargetFolder: '$(Build.ArtifactStagingDirectory)'
 - task: PublishBuildArtifacts@1
   inputs:
      artifactName: drop
