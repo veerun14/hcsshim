@@ -1,0 +1,33 @@
+trigger: 
+ - master
+
+pool:
+   vmImage: 'windows-2019'
+
+steps: 
+- task: GoTool@0
+  displayName: 'Install Go'
+  inputs:
+    version: '1.13.5'
+- task: Go@0
+  displayName: 'Build containerd shim'
+  inputs:
+    command: 'build'
+    arguments: '-a -v -o $(Build.ArtifactStagingDirectory) github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+- task: Go@0
+  displayName: 'Build runhcs'
+  inputs:
+    command: 'build'
+    arguments: '-a -v -o $(Build.ArtifactStagingDirectory) github.com/Microsoft/hcsshim/cmd/runhcs'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+- task: Go@0
+  displayName: 'Build test binary'
+  inputs:
+    command: 'test'
+    arguments: '-o $(Build.ArtifactStagingDirectory)\cri-containerd.test.exe -c github.com/Microsoft/hcsshim/test/cri-containerd --tags functional'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish build artifacts'
+  inputs:
+     artifactName: drop
