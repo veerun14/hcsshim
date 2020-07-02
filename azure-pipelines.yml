@@ -13,6 +13,11 @@ steps:
     command: 'build'
     arguments: '-a -v -o $(Build.ArtifactStagingDirectory) github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1'
     workingDirectory: '$(System.DefaultWorkingDirectory)'
+- task: Go@0
+  inputs:
+    command: 'build'
+    arguments: '-a -v -o $(Build.ArtifactStagingDirectory) github.com/Microsoft/hcsshim/cmd/runhcs'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
 - task: PublishBuildArtifacts@1
   inputs:
      artifactName: drop
