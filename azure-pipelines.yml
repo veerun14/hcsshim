@@ -11,7 +11,7 @@ steps:
 - task: Go@0
   inputs:
     command: 'build'
-    arguments: '-a -v'
+    arguments: 'github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1'
     workingDirectory: '$(System.DefaultWorkingDirectory)'
 - task: CopyFiles@2
   inputs:
