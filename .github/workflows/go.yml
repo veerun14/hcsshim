@@ -49,6 +49,7 @@ jobs:
         echo $Env:Path
         $cwd = (Get-Location).Path
         $Env:Path += ";$cwd"
-        go test -a -v -tags "functional uvmcreate uvmscratch uvmscsi uvmvpmem uvmvsmb uvmp9"
+        go test -c -o cri-containerd.test.exe github.com/Microsoft/hcsshim/test/cri-containerd --tags functional
+        cri-containerd.test.exe
 
     
