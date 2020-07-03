@@ -1,0 +1,55 @@
+name: hcsshim test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+    
+defaults:
+  run:
+    shell: powershell
+
+jobs:
+ 
+  build:
+    name: HCSShim tests
+    runs-on: windows-latest
+    steps:
+    
+    - name: setup-docker
+      uses: docker-practice/actions-setup-docker@0.0.1
+      
+    - name: Pull docker images
+      run: |
+        docker pull mcr.microsoft.com/windows/nanoserver:1709
+        docker pull mcr.microsoft.com/windows/nanoserver:1809
+        docker pull mcr.microsoft.com/windows/nanoserver:sac2016
+        docker pull mcr.microsoft.com/windows/nanoserver/insider:10.0.17763.55
+    
+    - name: Set up Go 1.13
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.13
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+      
+    - name: Build runhcs.exe
+      run: go build -a -v -o ./test/runhcs.exe ./cmd/runhcs
+    
+    - name: Build containerd-shim-runhcs-v1.exe
+      run: go build -a -v -o ./test/containerd-shim-runhcs-v1.exe ./cmd/containerd-shim-runhcs-v1
+      
+    - name: Test
+      run: |
+        cd test
+        dir
+        echo $Env:Path
+        $cwd = (Get-Location).Path
+        $Env:Path += ";$cwd"
+        go test -c -o cri-containerd.test.exe github.com/Microsoft/hcsshim/test/cri-containerd --tags functional
+        cri-containerd.test.exe
+
+    
