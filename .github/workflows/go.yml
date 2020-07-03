@@ -49,6 +49,6 @@ jobs:
         echo $Env:Path
         $cwd = (Get-Location).Path
         $Env:Path += ";$cwd"
-        go test -a -v -tags "functional uvmcreate uvmscratch uvmscsi uvmvpmem uvmvsmb uvmp9" ./runhcs ./internal
+        go test -a -v -tags "functional uvmcreate uvmscratch uvmscsi uvmvpmem uvmvsmb uvmp9"
 
     
